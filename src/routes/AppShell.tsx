@@ -1,26 +1,54 @@
+import { usePanelRef } from 'react-resizable-panels'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { Button } from '../components/ui/Button'
+import { Tooltip } from '../components/ui/Tooltip'
+import { WorkspaceLayout } from '../features/workspace/WorkspaceLayout'
 import { useAuth } from '../stores/auth'
 import { useServer } from '../stores/servers'
 
+function SidebarToggleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M6.2 3v10" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  )
+}
+
 /**
- * Placeholder for the workspace shell (sidebar / editor tabs / right
- * panel from the design spec). Later tasks fill this in; for now it
- * proves the authenticated route is reachable and gives sign-out /
- * theme / server-switch access so the flow is actually usable
- * end-to-end.
+ * The real workspace shell: header (branding, sign-out, theme) above a
+ * resizable/collapsible two-pane layout (`WorkspaceLayout` — sidebar
+ * explorer + tabbed main pane). Replaces the W1 placeholder.
  */
 export function AppShell() {
   const user = useAuth((s) => s.user)
   const clearAuth = useAuth((s) => s.clear)
   const current = useServer((s) => s.current)
+  const sidebarPanelRef = usePanelRef()
+
+  function toggleSidebar() {
+    const panel = sidebarPanelRef.current
+    if (!panel) return
+    if (panel.isCollapsed()) panel.expand()
+    else panel.collapse()
+  }
 
   return (
     <div className="flex h-full flex-col bg-bg">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
-        <div className="flex items-center gap-2">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
+        <div className="flex items-center gap-1">
+          <Tooltip content="Toggle sidebar">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              aria-label="Toggle sidebar"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition duration-150 ease-out hover:bg-surface-hover hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus-ring)]"
+            >
+              <SidebarToggleIcon />
+            </button>
+          </Tooltip>
           <span className="text-[14px] font-semibold tracking-tight text-text">Slate</span>
-          {current && <span className="text-[12px] text-text-faint">{current}</span>}
+          {current && <span className="hidden text-[12px] text-text-faint sm:inline">{current}</span>}
         </div>
         <div className="flex items-center gap-3">
           <ThemeToggle />
@@ -35,25 +63,8 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="flex flex-1 items-center justify-center px-6">
-        <div className="max-w-sm text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-border bg-surface">
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" className="text-accent">
-              <path
-                d="M5 4.5h9L18 8.5v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinejoin="round"
-              />
-              <path d="M13.5 4.5v4a1 1 0 0 0 1 1H18" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <h1 className="text-[16px] font-semibold text-text">Your workspace is warming up</h1>
-          <p className="mt-2 text-[13px] leading-relaxed text-text-muted">
-            Vault browsing, the note editor, and search land in the next milestone. You&apos;re signed in
-            {user ? ` as ${user.displayName}` : ''} and connected — everything else builds on top of this.
-          </p>
-        </div>
+      <main className="min-h-0 flex-1">
+        <WorkspaceLayout sidebarPanelRef={sidebarPanelRef} />
       </main>
     </div>
   )
