@@ -1,0 +1,141 @@
+/**
+ * Slate design tokens.
+ *
+ * Concept: the literal material — slate stone. Cool blue-gray surfaces,
+ * thin layered "cleavage plane" structure, and a warm chalk-gold accent
+ * (the mark chalk leaves on a slate board). These are the ONLY styling
+ * primitives the app should reach for: components consume these
+ * variables (directly or via the Tailwind theme mapping in index.css),
+ * never hard-coded colors.
+ *
+ * Theme resolution order: `data-theme="dark|light"` on <html> (explicit
+ * user override, persisted by the theme store) wins over the
+ * `prefers-color-scheme` media query, which is the default when no
+ * override is set (`data-theme` absent or "system").
+ */
+
+:root {
+  /* ---- Typography ---- */
+  --font-sans:
+    -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono:
+    'Cascadia Code', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+
+  /* ---- Radius: flat plates, not pills ---- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 180ms;
+
+  /* ---- Shadow (cool-toned, low elevation) ---- */
+  --shadow-sm: 0 1px 2px rgba(10, 14, 18, 0.16);
+  --shadow-md: 0 4px 16px rgba(10, 14, 18, 0.28);
+  --shadow-lg: 0 12px 40px rgba(10, 14, 18, 0.4);
+}
+
+/* ---------------------------------------------------------------- */
+/* Dark palette — default                                            */
+/* ---------------------------------------------------------------- */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-bg: #12161c;
+  --color-bg-inset: #0d1116;
+  --color-surface: #1a212b;
+  --color-surface-hover: #212a36;
+  --color-surface-active: #26313f;
+  --color-border: #2b3540;
+  --color-border-strong: #3a4553;
+
+  --color-text: #eef2f6;
+  --color-text-muted: #96a3b3;
+  --color-text-faint: #5f6d7d;
+
+  --color-accent: #dda039;
+  --color-accent-hover: #e8ae4c;
+  --color-accent-active: #c98f2c;
+  --color-accent-contrast: #1c1305;
+  --color-focus-ring: rgba(221, 160, 57, 0.55);
+
+  --color-danger: #e5484d;
+  --color-danger-hover: #f2565b;
+  --color-danger-contrast: #2a0a0b;
+  --color-success: #4caf6e;
+  --color-warning: #dda039;
+}
+
+/* ---------------------------------------------------------------- */
+/* Light palette                                                     */
+/* ---------------------------------------------------------------- */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: #f2f4f7;
+  --color-bg-inset: #e7ebef;
+  --color-surface: #ffffff;
+  --color-surface-hover: #eef1f5;
+  --color-surface-active: #e5e9ee;
+  --color-border: #d8dee5;
+  --color-border-strong: #c3ccd6;
+
+  --color-text: #1a222c;
+  --color-text-muted: #5b6b7c;
+  --color-text-faint: #8a97a6;
+
+  --color-accent: #b3791f;
+  --color-accent-hover: #a06c19;
+  --color-accent-active: #8f6015;
+  --color-accent-contrast: #fffaf0;
+  --color-focus-ring: rgba(179, 121, 31, 0.4);
+
+  --color-danger: #c53030;
+  --color-danger-hover: #ab2828;
+  --color-danger-contrast: #fff5f5;
+  --color-success: #2f855a;
+  --color-warning: #b3791f;
+}
+
+/* System preference applies only when no explicit override is stored */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']):not([data-theme='light']) {
+    color-scheme: light;
+
+    --color-bg: #f2f4f7;
+    --color-bg-inset: #e7ebef;
+    --color-surface: #ffffff;
+    --color-surface-hover: #eef1f5;
+    --color-surface-active: #e5e9ee;
+    --color-border: #d8dee5;
+    --color-border-strong: #c3ccd6;
+
+    --color-text: #1a222c;
+    --color-text-muted: #5b6b7c;
+    --color-text-faint: #8a97a6;
+
+    --color-accent: #b3791f;
+    --color-accent-hover: #a06c19;
+    --color-accent-active: #8f6015;
+    --color-accent-contrast: #fffaf0;
+    --color-focus-ring: rgba(179, 121, 31, 0.4);
+
+    --color-danger: #c53030;
+    --color-danger-hover: #ab2828;
+    --color-danger-contrast: #fff5f5;
+    --color-success: #2f855a;
+    --color-warning: #b3791f;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 1ms;
+    --duration-base: 1ms;
+  }
+}
