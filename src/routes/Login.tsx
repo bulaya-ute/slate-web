@@ -5,12 +5,13 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Skeleton } from '../components/ui/Skeleton'
 import { toast } from '../components/ui/Toast'
-import { api } from '../lib/api/client'
+import { api, CLIENT_API_VERSION } from '../lib/api/client'
 import type { LoginRequest, LoginResponse } from '../lib/api/types'
 import { ApiError } from '../lib/api/types'
 import { useConfigQuery, useServerCheckQuery } from '../lib/queries'
 import { useAuth } from '../stores/auth'
 import { useServer } from '../stores/servers'
+import { resolveLoginServerState } from './loginServerState'
 
 export function Login() {
   const navigate = useNavigate()
@@ -57,13 +58,15 @@ export function Login() {
     )
   }
 
-  const checkedInfo = check.data?.status === 'ok' ? check.data.info : null
+  const { info: checkedInfo, incompatibleInfo, unreachable } = resolveLoginServerState(check.data)
 
   if (checkedInfo?.setupRequired) {
+    // Intentionally inline rather than a third route guard — Login/Setup already
+    // need the server-check result to render, so branching here avoids a
+    // RequireSetup wrapper that would just re-fetch the same query.
     return <Navigate to="/setup" replace />
   }
 
-  const unreachable = !checkedInfo
   const serverLabel = config?.serverName ?? checkedInfo?.serverName ?? null
 
   return (
@@ -81,7 +84,18 @@ export function Login() {
         )
       }
     >
-      {unreachable ? (
+      {incompatibleInfo ? (
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <p className="text-[14px] font-medium text-text">Server version mismatch</p>
+          <p className="text-[13px] text-text-muted">
+            This server speaks API v{incompatibleInfo.apiVersion}; this client needs v{CLIENT_API_VERSION}.
+            Update the server or the client, then try again.
+          </p>
+          <Button type="button" variant="secondary" onClick={() => check.refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : unreachable ? (
         <div className="flex flex-col items-center gap-3 py-2 text-center">
           <p className="text-[14px] font-medium text-text">Can&apos;t reach this server</p>
           <p className="text-[13px] text-text-muted">

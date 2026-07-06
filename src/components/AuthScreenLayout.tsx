@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Wordmark } from './Wordmark'
 
 export interface AuthScreenLayoutProps {
@@ -14,6 +15,9 @@ export interface AuthScreenLayoutProps {
  * screens visually cohesive as one flow.
  */
 export function AuthScreenLayout({ subtitle, children, footer }: AuthScreenLayoutProps) {
+  // Keyed by route so the modal-in animation replays whenever Connect/Login/Setup
+  // swap for one another (a plain re-render wouldn't remount the card).
+  const { pathname } = useLocation()
   return (
     <div className="flex min-h-full items-center justify-center bg-slate-strata px-4 py-12">
       <div className="w-full max-w-[420px]">
@@ -22,7 +26,7 @@ export function AuthScreenLayout({ subtitle, children, footer }: AuthScreenLayou
           {subtitle && <p className="text-[13px] text-text-muted">{subtitle}</p>}
         </div>
         <div
-          key={typeof children}
+          key={pathname}
           className="animate-[modalIn_180ms_ease-out] rounded-lg border border-border bg-surface p-6 shadow-lg"
         >
           {children}

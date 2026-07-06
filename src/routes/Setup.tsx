@@ -31,6 +31,7 @@ export function Setup() {
 
   if (checkedInfo && !checkedInfo.setupRequired) {
     // Someone already completed setup (e.g. reopened this tab) — nothing to do here.
+    // Intentionally inline rather than a third route guard — see Login.tsx's mirror check.
     return <Navigate to="/login" replace />
   }
 

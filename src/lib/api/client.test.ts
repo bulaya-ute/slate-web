@@ -78,16 +78,20 @@ describe('401 → refresh → retry-once', () => {
     expect(useAuth.getState().refreshToken).toBe('refresh-2')
   })
 
-  it('clears the session and throws if the refresh call itself fails', async () => {
+  it('clears the session and throws the REFRESH call\'s error, not the original request\'s', async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(makeResponse(401, { error: { code: 'expired', message: 'Token expired' } }))
+      .mockResolvedValueOnce(makeResponse(401, { error: { code: 'expired', message: 'Token expired' } })) // original
       .mockResolvedValueOnce(
-        makeResponse(401, { error: { code: 'invalid_refresh', message: 'Refresh token invalid' } }),
+        makeResponse(401, { error: { code: 'invalid_refresh', message: 'Refresh token invalid' } }), // refresh
       )
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(api.get('/api/vaults')).rejects.toThrow(ApiError)
+    await expect(api.get('/api/vaults')).rejects.toMatchObject({
+      status: 401,
+      code: 'invalid_refresh',
+      message: 'Refresh token invalid',
+    })
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(useAuth.getState().accessToken).toBeNull()
     expect(useAuth.getState().refreshToken).toBeNull()

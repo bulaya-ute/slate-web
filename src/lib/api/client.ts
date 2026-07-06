@@ -113,10 +113,16 @@ async function request<T>(
     try {
       const tokens = await refreshSession(baseUrl)
       useAuth.getState().setTokens(tokens)
-    } catch {
+    } catch (refreshErr) {
       useAuth.getState().clear()
-      const { code, message } = await parseErrorBody(res)
-      throw new ApiError(401, code, message)
+      // Surface the refresh call's own failure (e.g. invalid_refresh), not
+      // the original request's 401 — they're frequently different errors.
+      if (refreshErr instanceof ApiError) throw refreshErr
+      throw new ApiError(
+        401,
+        'refresh_failed',
+        refreshErr instanceof Error ? refreshErr.message : 'Session refresh failed.',
+      )
     }
     return request<T>(method, path, body, options, true)
   }
