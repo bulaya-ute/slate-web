@@ -26,14 +26,15 @@ const NOTE: NoteMeta = {
   updatedAt: '2026-01-01T00:00:00Z',
 }
 
-function textResponse(body: string): Response {
+function textResponse(body: string, headers: Record<string, string> = {}): Response {
   return {
     ok: true,
     status: 200,
     json: async () => JSON.parse(body),
     text: async () => body,
+    headers: new Headers(headers),
     clone() {
-      return textResponse(body)
+      return textResponse(body, headers)
     },
   } as unknown as Response
 }
@@ -99,7 +100,11 @@ describe('AppShell (workspace integration)', () => {
       vi.fn((url: string) => {
         if (url.endsWith('/api/vaults')) return Promise.resolve(jsonResponse([VAULT]))
         if (url.endsWith('/api/vaults/vault-1/tree')) return Promise.resolve(jsonResponse(tree))
-        if (url.endsWith('/api/notes/note-1/content')) return Promise.resolve(textResponse('# Welcome\n\nHello.'))
+        if (url.endsWith('/api/notes/note-1/content')) {
+          return Promise.resolve(
+            textResponse('# Welcome\n\nHello.', { 'X-Rev-Id': 'rev-1', 'X-Content-Hash': 'hash-1' }),
+          )
+        }
         throw new Error(`Unexpected fetch: ${url}`)
       }),
     )

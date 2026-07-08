@@ -273,11 +273,20 @@ export interface ApiErrorBody {
 export class ApiError extends Error {
   code: string
   status: number
+  /**
+   * Raw parsed JSON body, when the response had one — even when it
+   * doesn't match the standard `{error:{code,message}}` envelope (e.g.
+   * `PUT /api/notes/{id}/content`'s 409 body is `{headRevId,
+   * conflictRevId}`). Callers that need that shape narrow this
+   * themselves; everyone else can ignore it.
+   */
+  body?: unknown
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, body?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.body = body
   }
 }

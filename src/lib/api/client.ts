@@ -26,14 +26,19 @@ function getBaseUrl(override?: string): string {
   return normalizeServerUrl(url)
 }
 
-async function parseErrorBody(res: Response): Promise<{ code: string; message: string }> {
+async function parseErrorBody(res: Response): Promise<{ code: string; message: string; body?: unknown }> {
   try {
-    const body = (await res.clone().json()) as ApiErrorBody
-    if (body?.error?.code && body?.error?.message) {
-      return { code: body.error.code, message: body.error.message }
+    const body = (await res.clone().json()) as unknown
+    const asEnvelope = body as ApiErrorBody
+    if (asEnvelope?.error?.code && asEnvelope?.error?.message) {
+      return { code: asEnvelope.error.code, message: asEnvelope.error.message, body }
     }
+    // Valid JSON, but not the standard error envelope — e.g. PUT
+    // .../content's 409 body `{headRevId, conflictRevId}`. Keep it around
+    // on ApiError.body so a caller that knows the shape can use it.
+    return { code: 'unknown', message: res.statusText || `Request failed (${res.status})`, body }
   } catch {
-    // body wasn't JSON (or wasn't the error envelope) — fall through
+    // body wasn't JSON at all — fall through
   }
   return { code: 'unknown', message: res.statusText || `Request failed (${res.status})` }
 }
@@ -86,16 +91,22 @@ async function refreshSession(baseUrl: string): Promise<RefreshResponse> {
 // Core request
 // ---------------------------------------------------------------------
 
-async function request<T>(
+/**
+ * Fires the fetch with auth headers attached, transparently handling the
+ * 401 → refresh → retry-once dance, and throwing `ApiError` for any
+ * non-2xx response. Returns the raw `Response` on success so callers can
+ * either parse the body (`request`) or also need response headers
+ * (`fetchWithHeaders` — e.g. note content's `X-Rev-Id`).
+ */
+async function fetchAuthed(
   method: string,
   path: string,
   body: unknown,
   options: RequestOptions = {},
   isRetry = false,
-): Promise<T> {
+): Promise<Response> {
   const baseUrl = getBaseUrl(options.baseUrlOverride)
   const { accessToken } = useAuth.getState()
-  const parseAs = options.parseAs ?? 'json'
 
   const headers: Record<string, string> = { ...options.headers }
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
@@ -124,15 +135,25 @@ async function request<T>(
         refreshErr instanceof Error ? refreshErr.message : 'Session refresh failed.',
       )
     }
-    return request<T>(method, path, body, options, true)
+    return fetchAuthed(method, path, body, options, true)
   }
 
   if (!res.ok) {
-    const { code, message } = await parseErrorBody(res)
-    throw new ApiError(res.status, code, message)
+    const { code, message, body: errBody } = await parseErrorBody(res)
+    throw new ApiError(res.status, code, message, errBody)
   }
 
-  return parseBody<T>(res, parseAs)
+  return res
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  body: unknown,
+  options: RequestOptions = {},
+): Promise<T> {
+  const res = await fetchAuthed(method, path, body, options)
+  return parseBody<T>(res, options.parseAs ?? 'json')
 }
 
 export const api = {
@@ -144,6 +165,20 @@ export const api = {
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>('PATCH', path, body, options),
   del: <T>(path: string, options?: RequestOptions) => request<T>('DELETE', path, undefined, options),
+}
+
+/**
+ * Like `api.get`, but also returns the response headers — for the rare
+ * endpoint where a header carries data the JSON/text body doesn't (e.g.
+ * `GET /notes/{id}/content`'s `X-Rev-Id` / `X-Content-Hash`).
+ */
+export async function fetchWithHeaders<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ data: T; headers: Headers }> {
+  const res = await fetchAuthed('GET', path, undefined, options)
+  const data = await parseBody<T>(res, options.parseAs ?? 'json')
+  return { data, headers: res.headers }
 }
 
 // ---------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { usePanelRef } from 'react-resizable-panels'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { Button } from '../components/ui/Button'
 import { Tooltip } from '../components/ui/Tooltip'
+import { SyncProvider } from '../features/sync/SyncProvider'
 import { WorkspaceLayout } from '../features/workspace/WorkspaceLayout'
 import { useAuth } from '../stores/auth'
 import { useServer } from '../stores/servers'
@@ -35,6 +36,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-full flex-col bg-bg">
+      <SyncProvider />
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
         <div className="flex items-center gap-1">
           <Tooltip content="Toggle sidebar">
