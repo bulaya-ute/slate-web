@@ -22,8 +22,7 @@ const NODE: NoteNode = { type: 'note', path: 'Note.md', name: 'Note', note: note
 /**
  * Minimal stand-in for Explorer's rename wiring: real `renamingPath` state so
  * that committing/cancelling actually unmounts the `<input>`, the same as in
- * the real app — this is what lets a stale blur-after-unmount reach
- * TreeNode's onBlur handler.
+ * the real app.
  */
 function Harness({
   onCommitRename,
@@ -41,8 +40,7 @@ function Harness({
     renamingPath,
     startRename: (path) => setRenamingPath(path),
     // Mirrors Explorer.handleCommitRename/cancelRename: clearing
-    // renamingPath is what unmounts the <input> and is what triggers the
-    // native blur-after-unmount this suite guards against.
+    // renamingPath is what unmounts the <input>.
     commitRename: (node, newName) => {
       setRenamingPath(null)
       onCommitRename?.(node, newName)
@@ -61,14 +59,52 @@ function Harness({
   return <TreeNodeView node={NODE} depth={0} actions={actions} />
 }
 
+/**
+ * Stand-in for a *slow* parent: `renamingPath` is never cleared, so the
+ * `<input>` stays mounted across commit/cancel — mimicking a parent whose
+ * state update lags a tick behind (e.g. an optimistic update that hasn't
+ * flushed yet). This matters because `fireEvent.blur()` only reaches React's
+ * delegated `onBlur` when the target is still attached to the document; a
+ * blur fired on an already-detached node never reaches it (its event path is
+ * just `[target]`, and jsdom doesn't auto-fire blur on removal either). Using
+ * this harness for the Enter/Escape-then-blur cases below means the
+ * follow-up blur is a *real*, delegated blur on a still-mounted input — the
+ * same shape of event `renameHandledRef` (TreeNode.tsx) exists to guard
+ * against — so removing that guard makes these tests fail.
+ */
+function PersistentHarness({
+  onCommitRename,
+  onCancelRename,
+}: {
+  onCommitRename?: ExplorerActions['commitRename']
+  onCancelRename?: ExplorerActions['cancelRename']
+}) {
+  const actions: ExplorerActions = {
+    isExpanded: () => false,
+    toggleExpand: () => {},
+    activeNoteId: null,
+    renamingPath: NODE.path,
+    startRename: () => {},
+    commitRename: (node, newName) => {
+      onCommitRename?.(node, newName)
+    },
+    cancelRename: () => {
+      onCancelRename?.()
+    },
+    onOpenNote: () => {},
+    onNewNote: () => {},
+    onNewFolder: () => {},
+    onDelete: () => {},
+    onMove: () => {},
+  }
+
+  return <TreeNodeView node={NODE} depth={0} actions={actions} />
+}
+
 describe('TreeNodeView inline rename', () => {
-  it('commits exactly once on Enter, and a stale blur firing after the input unmounts does not re-commit', () => {
-    const commitRename = vi.fn((_node, _newName) => {
-      // Mirror Explorer.handleCommitRename: committing clears renamingPath,
-      // which unmounts the <input> and is what triggers the native
-      // blur-after-unmount this test guards against.
-    })
-    render(<Harness onCommitRename={commitRename} />)
+  it('commits exactly once on Enter, and a genuine blur right after (input still mounted) does not re-commit', () => {
+    const commitRename = vi.fn()
+    render(<PersistentHarness onCommitRename={commitRename} />)
 
     const input = screen.getByDisplayValue('Note') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Renamed' } })
@@ -77,19 +113,21 @@ describe('TreeNodeView inline rename', () => {
     expect(commitRename).toHaveBeenCalledTimes(1)
     expect(commitRename).toHaveBeenCalledWith(NODE, 'Renamed')
 
-    // The input is gone from the DOM now (rename mode ended) — this is the
-    // detached node a real browser would still fire a blur on.
-    expect(screen.queryByDisplayValue('Renamed')).not.toBeInTheDocument()
+    // Unlike the real app, this harness deliberately keeps `renamingPath`
+    // set, so the <input> is still attached to the document here.
+    expect(input).toBeInTheDocument()
 
+    // A real, delegated blur on the still-mounted input — not a no-op fired
+    // on a detached node.
     fireEvent.blur(input)
 
     expect(commitRename).toHaveBeenCalledTimes(1)
   })
 
-  it('does not commit when the value is unchanged or blank, and blur after Enter still does not re-fire cancel', () => {
+  it('does not commit when the value is unchanged or blank, and a genuine blur after Enter still does not re-fire cancel', () => {
     const commitRename = vi.fn()
     const cancelRename = vi.fn()
-    render(<Harness onCommitRename={commitRename} onCancelRename={cancelRename} />)
+    render(<PersistentHarness onCommitRename={commitRename} onCancelRename={cancelRename} />)
 
     const input = screen.getByDisplayValue('Note') as HTMLInputElement
     fireEvent.change(input, { target: { value: '   ' } })
@@ -104,10 +142,10 @@ describe('TreeNodeView inline rename', () => {
     expect(commitRename).not.toHaveBeenCalled()
   })
 
-  it('cancels exactly once on Escape, and a stale blur after unmount does not re-fire commit or cancel', () => {
+  it('cancels exactly once on Escape, and a genuine blur after Escape does not re-fire commit or cancel', () => {
     const commitRename = vi.fn()
     const cancelRename = vi.fn()
-    render(<Harness onCommitRename={commitRename} onCancelRename={cancelRename} />)
+    render(<PersistentHarness onCommitRename={commitRename} onCancelRename={cancelRename} />)
 
     const input = screen.getByDisplayValue('Note') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Renamed' } })
@@ -115,7 +153,6 @@ describe('TreeNodeView inline rename', () => {
 
     expect(cancelRename).toHaveBeenCalledTimes(1)
     expect(commitRename).not.toHaveBeenCalled()
-    expect(screen.queryByDisplayValue('Renamed')).not.toBeInTheDocument()
 
     fireEvent.blur(input)
 
