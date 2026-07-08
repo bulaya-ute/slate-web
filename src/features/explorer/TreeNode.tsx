@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import type { NoteMeta } from '../../lib/api/types'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { type DragPayload, readDragPayload, setDragPayload } from './dnd'
@@ -79,11 +79,22 @@ export function TreeNodeView({ node, depth, actions }: TreeNodeProps) {
   const [dragOver, setDragOver] = useState(false)
   const [renameValue, setRenameValue] = useState(node.name)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Enter (commit) and Escape (cancel) both unmount the input, which makes
+  // the browser fire a native blur on it — and React still invokes onBlur
+  // for that stale event. Without this guard, Enter's commit is followed by
+  // a second, stale commitRename() call from that blur (the mutation fires
+  // twice; the duplicate can 404 and raise a spurious "Rename failed" toast
+  // after a successful rename). Reset whenever a fresh rename starts.
+  const renameHandledRef = useRef(false)
 
   const isFolder = node.type === 'folder'
   const isRenaming = actions.renamingPath === node.path
   const isActive = node.type === 'note' && node.note.id === actions.activeNoteId
   const expanded = isFolder && actions.isExpanded(node.path)
+
+  useEffect(() => {
+    if (isRenaming) renameHandledRef.current = false
+  }, [isRenaming])
 
   function openMenu(e: React.MouseEvent) {
     e.preventDefault()
@@ -115,9 +126,16 @@ export function TreeNodeView({ node, depth, actions }: TreeNodeProps) {
   }
 
   function commitRename() {
+    if (renameHandledRef.current) return
+    renameHandledRef.current = true
     const trimmed = renameValue.trim()
     if (trimmed && trimmed !== node.name) actions.commitRename(node, trimmed)
     else actions.cancelRename()
+  }
+
+  function handleCancelRename() {
+    renameHandledRef.current = true
+    actions.cancelRename()
   }
 
   function handleDragStart(e: React.DragEvent) {
@@ -210,7 +228,7 @@ export function TreeNodeView({ node, depth, actions }: TreeNodeProps) {
                 commitRename()
               } else if (e.key === 'Escape') {
                 e.preventDefault()
-                actions.cancelRename()
+                handleCancelRename()
               }
             }}
             className="min-w-0 flex-1 rounded-sm border border-accent bg-bg px-1 py-0 text-[13px] text-text outline-none"
