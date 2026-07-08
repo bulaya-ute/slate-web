@@ -38,6 +38,13 @@ describe('openTab', () => {
     expect(tabsForVault(VAULT_A).tabs.map((t) => t.noteId)).toEqual(['n1'])
     expect(tabsForVault(VAULT_B).tabs.map((t) => t.noteId)).toEqual(['n2'])
   })
+
+  it('opts into opening in the background with { activate: false } — added for Ctrl+click wikilinks', () => {
+    useTabs.getState().openTab(VAULT_A, { noteId: 'n1', path: 'a.md', title: 'a' })
+    useTabs.getState().openTab(VAULT_A, { noteId: 'n2', path: 'b.md', title: 'b' }, { activate: false })
+    expect(tabsForVault(VAULT_A).tabs.map((t) => t.noteId)).toEqual(['n1', 'n2']) // still opened as a tab
+    expect(tabsForVault(VAULT_A).activeNoteId).toBe('n1') // but focus stayed put
+  })
 })
 
 describe('closeTab', () => {

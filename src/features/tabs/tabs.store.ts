@@ -29,8 +29,16 @@ export const EMPTY_VAULT_TABS: VaultTabs = { tabs: [], activeNoteId: null }
 interface TabsState {
   /** Open tabs, keyed by vault id — each vault remembers its own tab set. */
   byVault: Record<string, VaultTabs>
-  /** Opens a note as a tab (or just activates it if already open). */
-  openTab: (vaultId: string, note: { noteId: string; path: string; title: string }) => void
+  /**
+   * Opens a note as a tab (or just activates it if already open).
+   * `activate: false` opens it in the background — Obsidian's
+   * Ctrl/Cmd+click "open in new tab without switching to it".
+   */
+  openTab: (
+    vaultId: string,
+    note: { noteId: string; path: string; title: string },
+    opts?: { activate?: boolean },
+  ) => void
   /** Closes a tab, promoting a sensible neighbor to active. */
   closeTab: (vaultId: string, noteId: string) => void
   setActive: (vaultId: string, noteId: string) => void
@@ -62,14 +70,15 @@ export const useTabs = create<TabsState>()(
     (set) => ({
       byVault: {},
 
-      openTab: (vaultId, note) =>
+      openTab: (vaultId, note, opts) =>
         set((state) =>
           updateVault(state, vaultId, (vault) => {
             const exists = vault.tabs.some((t) => t.noteId === note.noteId)
             const tabs = exists
               ? vault.tabs
               : [...vault.tabs, { noteId: note.noteId, path: note.path, title: note.title, dirty: false }]
-            return { tabs, activeNoteId: note.noteId }
+            const activate = opts?.activate ?? true
+            return { tabs, activeNoteId: activate ? note.noteId : vault.activeNoteId }
           }),
         ),
 
