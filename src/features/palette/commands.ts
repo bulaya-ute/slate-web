@@ -1,5 +1,6 @@
 import { toast } from '../../components/ui/Toast'
 import type { NoteMeta } from '../../lib/api/types'
+import { useOverlay } from '../../stores/overlay'
 import { useActiveEditor } from '../editor/activeEditorController'
 import { nextAvailableName } from '../explorer/tree'
 import { useTabs } from '../tabs/tabs.store'
@@ -68,13 +69,19 @@ export function buildCommands(ctx: CommandContext): Command[] {
   commands.push({
     id: 'open-graph',
     label: 'Open graph view',
-    run: () => toast.info('Graph view is coming soon', 'The vault-wide graph view is planned for a later update.'),
+    run: () => {
+      if (!ctx.vaultId) {
+        toast.info('No vault open', 'Open a vault first to see its graph.')
+        return
+      }
+      useOverlay.getState().openGraph()
+    },
   })
 
   commands.push({
     id: 'open-settings',
     label: 'Open settings',
-    run: () => toast.info('Settings are coming soon', 'The settings screen is planned for a later update.'),
+    run: () => useOverlay.getState().openSettings(),
   })
 
   commands.push({
