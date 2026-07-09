@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { useActiveVault } from '../../stores/activeVault'
+import { useEditorPrefs } from '../../stores/editorPrefs'
+import { ConflictResolveView } from '../conflicts/ConflictResolveView'
+import { useNoteConflicts } from '../conflicts/useConflicts'
 import { useNoteContentQuery } from '../notes/useNoteContent'
 import { autosaveManager } from '../sync/syncManager'
 import { useAutosaveStatus } from '../sync/useAutosaveStatus'
@@ -38,8 +41,25 @@ export function EditorHost({ noteId, path, title }: EditorHostProps) {
   const { data, isLoading, isError, refetch } = useNoteContentQuery(noteId)
   const context = useEditorContextValue(vaultId ?? '')
   const saveState = useAutosaveStatus(noteId)
-  const [showPreview, setShowPreview] = useState(false)
+  // Seeded once from the Settings-configurable default (Task W5); the
+  // per-note toggle button and Ctrl+Shift+P "Toggle preview pane" both
+  // still just flip local state from there — this only affects a note's
+  // *initial* preview visibility on open.
+  const [showPreview, setShowPreview] = useState(() => useEditorPrefs.getState().defaultSplitPreview)
   const [liveContent, setLiveContent] = useState('')
+  const [showResolve, setShowResolve] = useState(false)
+
+  // Two independent conflict signals: (a) *this device's* own save just
+  // 409'd (`saveState.status`, from the autosave loop) — head moved out
+  // from under an edit in flight here, so it's frozen read-only until
+  // resolved; (b) the note already carries pending conflict blob(s) per
+  // the vault-wide `GET /conflicts` (Task W5) — e.g. two *other* devices
+  // raced before this one ever opened the note. Head didn't move for
+  // (b), so editing/saving still works normally; the banner just nudges
+  // toward resolving so the note stops carrying stale conflict blobs.
+  const serverConflicts = useNoteConflicts(vaultId, noteId)
+  const isLocalConflict = saveState.status === 'conflict'
+  const hasPendingConflicts = isLocalConflict || (serverConflicts?.length ?? 0) > 0
 
   const hostRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -122,14 +142,17 @@ export function EditorHost({ noteId, path, title }: EditorHostProps) {
     viewRef.current?.dispatch({ effects: contextCompartment.reconfigure(editorContext.of(context)) })
   }, [context, contextCompartment])
 
-  // A conflicted note is frozen until W5's resolve UI lands — further
-  // local edits would otherwise be silently unsaved.
+  // Frozen read-only only for *this device's own* save conflict — see
+  // `isLocalConflict`'s doc comment above. A pending conflict this
+  // device merely inherited from another device doesn't block editing;
+  // head hasn't moved for that case, so the next save still succeeds.
   useEffect(() => {
-    const readOnly = saveState.status === 'conflict'
     viewRef.current?.dispatch({
-      effects: readOnlyCompartment.reconfigure(readOnly ? [EditorView.editable.of(false), EditorState.readOnly.of(true)] : []),
+      effects: readOnlyCompartment.reconfigure(
+        isLocalConflict ? [EditorView.editable.of(false), EditorState.readOnly.of(true)] : [],
+      ),
     })
-  }, [saveState.status, readOnlyCompartment])
+  }, [isLocalConflict, readOnlyCompartment])
 
   // Tab dirty dot: set the instant an edit lands, cleared once the save
   // loop confirms it landed on the server.
@@ -143,6 +166,18 @@ export function EditorHost({ noteId, path, title }: EditorHostProps) {
   useEffect(() => {
     if (showPreview && viewRef.current) setLiveContent(viewRef.current.state.doc.toString())
   }, [showPreview])
+
+  if (showResolve && vaultId) {
+    return (
+      <ConflictResolveView
+        vaultId={vaultId}
+        noteId={noteId}
+        path={path}
+        onCancel={() => setShowResolve(false)}
+        onResolved={() => setShowResolve(false)}
+      />
+    )
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -159,10 +194,16 @@ export function EditorHost({ noteId, path, title }: EditorHostProps) {
         </div>
       </div>
 
-      {saveState.status === 'conflict' && (
-        <div className="border-b border-border bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)] px-4 py-2 text-[13px] text-danger">
-          This note changed elsewhere since your last save. It's read-only for now — conflict resolution is
-          coming in a later update.
+      {hasPendingConflicts && (
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)] px-4 py-2 text-[13px] text-danger">
+          <span>
+            {isLocalConflict
+              ? "This note changed elsewhere since your last save. It's read-only until the conflict is resolved."
+              : 'This note has unresolved sync conflicts from another device.'}
+          </span>
+          <Button size="sm" variant="danger" onClick={() => setShowResolve(true)}>
+            Resolve conflict
+          </Button>
         </div>
       )}
 

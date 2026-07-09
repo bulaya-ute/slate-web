@@ -118,6 +118,23 @@ export class AutosaveManager {
     entry.baseRevId = revId
   }
 
+  /**
+   * Called once `POST /notes/{id}/resolve` succeeds (Task W5's conflict
+   * resolve view): un-freezes the note (`notifyChange` refuses further
+   * edits while `status === 'conflict'`) and adopts the resolve
+   * response's new `revId` as the fresh `baseRevId`, so the next save
+   * targets it instead of the stale one that caused the conflict.
+   * No-op for a note that isn't currently open — a resolve triggered
+   * from outside an open editor has nothing here to reconcile; the next
+   * `open()` for it starts clean anyway.
+   */
+  resolveConflict(noteId: string, newRevId: string): void {
+    const entry = this.notes.get(noteId)
+    if (!entry) return
+    entry.baseRevId = newRevId
+    this.setState(entry, { status: 'saved', conflict: null })
+  }
+
   subscribe(noteId: string, listener: (state: AutosaveNoteState) => void): () => void {
     const entry = this.notes.get(noteId)
     if (!entry) return () => {}
