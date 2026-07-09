@@ -27,10 +27,31 @@ export function UsersPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
+  const [disableTarget, setDisableTarget] = useState<AdminUser | null>(null)
 
   function handleConfirmDelete() {
     if (!deleteTarget) return
     deleteUser.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) })
+  }
+
+  // Disabling locks a user out immediately, so — like delete/revoke — it
+  // routes through ConfirmDialog. Re-enabling just restores access for
+  // someone an admin already trusted enough to create, so it fires
+  // directly instead of interrupting the row action with a second click.
+  function handleToggleDisabled(u: AdminUser) {
+    if (u.isDisabled) {
+      patchUser.mutate({ userId: u.id, body: { isDisabled: false } })
+    } else {
+      setDisableTarget(u)
+    }
+  }
+
+  function handleConfirmDisable() {
+    if (!disableTarget) return
+    patchUser.mutate(
+      { userId: disableTarget.id, body: { isDisabled: true } },
+      { onSuccess: () => setDisableTarget(null) },
+    )
   }
 
   return (
@@ -116,7 +137,7 @@ export function UsersPage() {
                         size="sm"
                         variant="secondary"
                         disabled={u.id === currentUserId}
-                        onClick={() => patchUser.mutate({ userId: u.id, body: { isDisabled: !u.isDisabled } })}
+                        onClick={() => handleToggleDisabled(u)}
                       >
                         {u.isDisabled ? 'Enable' : 'Disable'}
                       </Button>
@@ -158,6 +179,19 @@ export function UsersPage() {
         loading={deleteUser.isPending}
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+      <ConfirmDialog
+        open={disableTarget !== null}
+        title="Disable user?"
+        description={
+          disableTarget
+            ? `"${disableTarget.username}" will be immediately signed out and won't be able to log back in until re-enabled.`
+            : ''
+        }
+        confirmLabel="Disable"
+        loading={patchUser.isPending}
+        onConfirm={handleConfirmDisable}
+        onCancel={() => setDisableTarget(null)}
       />
     </div>
   )
