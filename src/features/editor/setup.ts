@@ -26,6 +26,8 @@ export interface BuildEditorExtensionsOptions {
   readOnlyExtension: Extension
   /** Fired on every content-changing transaction — the caller debounces/saves. */
   onChange: (content: string) => void
+  /** Ctrl+S / Cmd+S — skips the debounce and saves immediately. */
+  onSave: () => void
 }
 
 /**
@@ -35,7 +37,7 @@ export interface BuildEditorExtensionsOptions {
  * editor.
  */
 export function buildEditorExtensions(options: BuildEditorExtensionsOptions): Extension[] {
-  const { contextExtension, readOnlyExtension, onChange } = options
+  const { contextExtension, readOnlyExtension, onChange, onSave } = options
 
   return [
     contextExtension,
@@ -53,7 +55,17 @@ export function buildEditorExtensions(options: BuildEditorExtensionsOptions): Ex
       override: [wikilinkCompletionSource, tagCompletionSource],
       icons: false,
     }),
-    keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...markdownKeymap, ...historyKeymap, ...defaultKeymap]),
+    keymap.of([
+      // Ahead of the rest so it wins over any other `Mod-s` binding, and
+      // `preventDefault` so the browser's own "Save Page As" doesn't fire.
+      { key: 'Mod-s', preventDefault: true, run: () => { onSave(); return true } },
+      ...closeBracketsKeymap,
+      ...completionKeymap,
+      ...searchKeymap,
+      ...markdownKeymap,
+      ...historyKeymap,
+      ...defaultKeymap,
+    ]),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) onChange(update.state.doc.toString())
     }),

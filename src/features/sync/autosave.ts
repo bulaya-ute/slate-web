@@ -70,12 +70,35 @@ export class AutosaveManager {
     })
   }
 
-  /** Unregisters a note (tab closed) — cancels its debounce and drops any queued save. */
-  close(noteId: string): void {
+  /**
+   * Unregisters a note (tab closed / switched away from). This used to
+   * be called `close()` and just cancel the debounce and drop whatever
+   * edit was pending — silently discarding up to 800ms of unsaved
+   * typing on every tab switch. It no longer does that: any pending
+   * edit is flushed (fired as a real save) before this note's
+   * bookkeeping goes away. Renamed so that old drop-on-close behavior
+   * can't quietly reappear under a name that no longer describes it.
+   *
+   * The flushed save is fire-and-forget from here — we don't block the
+   * unmount on it. `commit()` guards its own completion by *identity*
+   * (`this.notes.get(noteId) === entry`), not mere presence, so it's
+   * safe to delete this note's map entry immediately: if the note gets
+   * reopened before the flush resolves, the reopened tab gets a fresh
+   * entry and the orphaned save's completion reconciles into it rather
+   * than mutating a detached object nobody reads anymore (see `commit`).
+   *
+   * Doesn't touch the offline queue — a save that's already
+   * queued/retrying for this note stays queued so a later reconnect
+   * still delivers it; closing a tab isn't "discard this edit".
+   */
+  flushAndClose(noteId: string): void {
     const entry = this.notes.get(noteId)
     if (!entry) return
-    if (entry.debounceTimer !== null) clearTimeout(entry.debounceTimer)
-    this.queue.remove(noteId)
+    if (entry.debounceTimer !== null) {
+      clearTimeout(entry.debounceTimer)
+      entry.debounceTimer = null
+    }
+    if (entry.pendingContent !== null) void this.commit(noteId, entry)
     this.notes.delete(noteId)
   }
 
@@ -132,7 +155,7 @@ export class AutosaveManager {
   }
 
   dispose(): void {
-    for (const noteId of this.notes.keys()) this.close(noteId)
+    for (const noteId of this.notes.keys()) this.flushAndClose(noteId)
     this.queue.dispose()
   }
 
@@ -163,24 +186,48 @@ export class AutosaveManager {
     }
 
     this.setState(entry, { status: 'saving' })
+    const requestBaseRevId = entry.baseRevId
     try {
-      const res = await this.opts.save({ noteId, content, baseRevId: entry.baseRevId, deviceId: this.opts.deviceId })
-      if (!this.notes.has(noteId)) return // closed while the request was in flight
-      entry.baseRevId = res.revId
-      if (entry.pendingContent !== null) {
-        // More edits landed mid-save — go again rather than firing a
-        // second request back-to-back.
-        this.resetDebounce(noteId, entry)
-      } else {
-        this.setState(entry, { status: 'saved', conflict: null })
+      const res = await this.opts.save({ noteId, content, baseRevId: requestBaseRevId, deviceId: this.opts.deviceId })
+      const live = this.notes.get(noteId)
+      if (live === entry) {
+        entry.baseRevId = res.revId
+        if (entry.pendingContent !== null) {
+          // More edits landed mid-save — go again rather than firing a
+          // second request back-to-back.
+          this.resetDebounce(noteId, entry)
+        } else {
+          this.setState(entry, { status: 'saved', conflict: null })
+        }
+      } else if (live && live.baseRevId === requestBaseRevId) {
+        // This note was closed and reopened while this save was in
+        // flight — `entry` is the *orphaned* pre-close object (`open`
+        // hands the reopened tab a brand-new one), so it's not `live`
+        // by identity even though `this.notes.has(noteId)` is true
+        // again. If the live entry's `baseRevId` hasn't moved since
+        // this save started, nothing has superseded this response, so
+        // it's still safe (and necessary) to hand the reopened tab the
+        // fresh revId — otherwise its first save would 409 against a
+        // head that, as far as the server's concerned, no longer
+        // exists (a conflict nobody actually caused).
+        live.baseRevId = res.revId
       }
+      // Otherwise the note was closed for good (no `live` entry) or the
+      // live entry already moved on its own since — nothing to reconcile.
     } catch (err) {
-      if (!this.notes.has(noteId)) return
+      const live = this.notes.get(noteId)
+      if (live !== undefined && live !== entry) return // reopened as a distinct entry — let its own state own this note from here
       if (err instanceof ConflictError) {
-        this.setState(entry, { status: 'conflict', conflict: { headRevId: err.headRevId, conflictRevId: err.conflictRevId } })
+        if (live === entry) {
+          this.setState(entry, { status: 'conflict', conflict: { headRevId: err.headRevId, conflictRevId: err.conflictRevId } })
+        }
         return
       }
-      this.setState(entry, { status: 'offline' })
+      if (live === entry) this.setState(entry, { status: 'offline' })
+      // Queue it either way (still-open note, or closed-for-good with no
+      // reopen) so a later reconnect can still deliver it — only a
+      // *reopened* note (handled above) skips this, to avoid clobbering
+      // whatever that reopened tab has since queued under the same id.
       this.queue.enqueue({ noteId, content, baseRevId: entry.baseRevId, deviceId: this.opts.deviceId })
     }
   }

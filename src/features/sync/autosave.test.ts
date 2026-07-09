@@ -232,8 +232,41 @@ describe('offline -> queued -> flush', () => {
   })
 })
 
-describe('close', () => {
-  it('cancels a pending debounce and drops any queued save for the note', async () => {
+describe('flushAndClose', () => {
+  it('flushes a pending debounced edit (fires a save) instead of dropping it', async () => {
+    const save = vi.fn(async () => response('rev-2'))
+    const manager = new AutosaveManager({ deviceId: 'device-1', save })
+    manager.open(NOTE_ID, 'rev-1')
+
+    manager.notifyChange(NOTE_ID, 'edit')
+    // Well within the 800ms debounce — nothing has been saved yet.
+    await vi.advanceTimersByTimeAsync(100)
+    expect(save).not.toHaveBeenCalled()
+
+    manager.flushAndClose(NOTE_ID)
+
+    expect(save).toHaveBeenCalledExactlyOnceWith({
+      noteId: NOTE_ID,
+      content: 'edit',
+      baseRevId: 'rev-1',
+      deviceId: 'device-1',
+    })
+  })
+
+  it('unregisters the note (further notifyChange/getState treat it as unopened)', async () => {
+    const save = vi.fn(async () => response())
+    const manager = new AutosaveManager({ deviceId: 'device-1', save })
+    manager.open(NOTE_ID, 'rev-1')
+
+    manager.flushAndClose(NOTE_ID)
+
+    expect(manager.getState(NOTE_ID)).toEqual({ status: 'saved', conflict: null }) // default for an unopened note
+    manager.notifyChange(NOTE_ID, 'ignored — note is closed')
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('does not drop an already-queued offline save — it stays queued for the next reconnect flush', async () => {
     const save = vi.fn(async () => {
       throw new Error('offline')
     })
@@ -243,9 +276,81 @@ describe('close', () => {
     await vi.advanceTimersByTimeAsync(DEBOUNCE_MS)
     expect(manager.queueSize).toBe(1)
 
-    manager.close(NOTE_ID)
+    manager.flushAndClose(NOTE_ID)
 
-    expect(manager.queueSize).toBe(0)
-    expect(manager.getState(NOTE_ID)).toEqual({ status: 'saved', conflict: null }) // default for an unopened note
+    expect(manager.queueSize).toBe(1) // still queued, not dropped
+  })
+
+  it('is a no-op for a note that is not open', () => {
+    const save = vi.fn(async () => response())
+    const manager = new AutosaveManager({ deviceId: 'device-1', save })
+    expect(() => manager.flushAndClose('never-opened')).not.toThrow()
+  })
+})
+
+describe('close+reopen races (Finding 4: stale baseRevId from an orphaned in-flight save)', () => {
+  it('reconciles the reopened tab baseRevId when an orphaned save (from before close) resolves after reopen', async () => {
+    let resolveFirst!: (res: PutNoteContentResponse) => void
+    const firstCall = new Promise<PutNoteContentResponse>((resolve) => {
+      resolveFirst = resolve
+    })
+    const save = vi.fn().mockReturnValueOnce(firstCall).mockResolvedValueOnce(response('rev-99'))
+    const manager = new AutosaveManager({ deviceId: 'device-1', save })
+    manager.open(NOTE_ID, 'rev-1')
+
+    manager.notifyChange(NOTE_ID, 'edit before close')
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS)
+    expect(save).toHaveBeenCalledTimes(1) // in flight, awaiting resolveFirst
+
+    // Tab closes while that save is still in flight, then reopens the
+    // same note before it resolves — `open` fetches a fresh revId that
+    // (since the server hasn't recorded the in-flight save's result
+    // yet) is still the pre-save one.
+    manager.flushAndClose(NOTE_ID)
+    manager.open(NOTE_ID, 'rev-1')
+
+    // The orphaned save now resolves.
+    resolveFirst(response('rev-2'))
+    await vi.advanceTimersByTimeAsync(0)
+
+    // The reopened tab's entry — not the orphaned one — got the new revId.
+    expect(manager.getState(NOTE_ID).status).toBe('saved')
+
+    manager.notifyChange(NOTE_ID, 'edit after reopen')
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS)
+
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(save).toHaveBeenLastCalledWith({
+      noteId: NOTE_ID,
+      content: 'edit after reopen',
+      baseRevId: 'rev-2', // not the stale pre-close 'rev-1' — would 409 otherwise
+      deviceId: 'device-1',
+    })
+  })
+
+  it('leaves the reopened tab alone if it already moved past the orphaned save\'s starting point', async () => {
+    let resolveFirst!: (res: PutNoteContentResponse) => void
+    const firstCall = new Promise<PutNoteContentResponse>((resolve) => {
+      resolveFirst = resolve
+    })
+    const save = vi.fn().mockReturnValueOnce(firstCall).mockResolvedValueOnce(response('rev-50'))
+    const manager = new AutosaveManager({ deviceId: 'device-1', save })
+    manager.open(NOTE_ID, 'rev-1')
+
+    manager.notifyChange(NOTE_ID, 'edit before close')
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS)
+    manager.flushAndClose(NOTE_ID)
+
+    // Reopened at a *newer* revId than the orphaned save started from —
+    // e.g. someone else's change landed and this tab refetched it.
+    manager.open(NOTE_ID, 'rev-5')
+
+    resolveFirst(response('rev-2'))
+    await vi.advanceTimersByTimeAsync(0)
+
+    manager.notifyChange(NOTE_ID, 'edit after reopen')
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS)
+
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ baseRevId: 'rev-5' }))
   })
 })

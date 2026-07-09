@@ -67,12 +67,15 @@ export function EditorHost({ noteId, path, title }: EditorHostProps) {
       if (vaultId) useTabs.getState().setDirty(vaultId, noteId, true)
     }
 
+    const onSave = () => autosaveManager.flushNow(noteId)
+
     const state = EditorState.create({
       doc: data.content,
       extensions: buildEditorExtensions({
         contextExtension: contextCompartment.of(editorContext.of(contextRef.current)),
         readOnlyExtension: readOnlyCompartment.of([]),
         onChange,
+        onSave,
       }),
     })
     const view = new EditorView({ state, parent: hostRef.current })
@@ -82,7 +85,11 @@ export function EditorHost({ noteId, path, title }: EditorHostProps) {
     return () => {
       view.destroy()
       viewRef.current = null
-      autosaveManager.close(noteId)
+      // Flushes (rather than drops) any edit still sitting in the 800ms
+      // debounce window when the tab switches/closes — see
+      // `AutosaveManager.flushAndClose`'s doc comment for why this used
+      // to lose up to 800ms of typing here.
+      autosaveManager.flushAndClose(noteId)
     }
     // `data` (the initial fetch) and `noteId` are the only things that
     // should tear down/recreate the view — see the component doc comment.

@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { createSyncConnection, type RevisionEvent, type SyncConnection } from '../../lib/api/signalr'
+import { createSyncConnection, RECONNECT_DELAYS_MS, type RevisionEvent, type SyncConnection } from '../../lib/api/signalr'
 import { normalizeServerUrl } from '../../lib/url'
 import { useActiveVault } from '../../stores/activeVault'
 import { useAuth } from '../../stores/auth'
@@ -10,7 +10,7 @@ import { noteContentQueryKey } from '../notes/useNoteContent'
 import { tabsForVault } from '../tabs/tabs.store'
 import { lastSeqForVault, useLastSeq } from './lastSeq.store'
 import { fetchChanges } from './notesSyncApi'
-import { autosaveManager } from './syncManager'
+import { autosaveManager, deviceId } from './syncManager'
 
 /**
  * Mounts the live sync connection for the whole workspace: one SignalR
@@ -48,6 +48,18 @@ export function SyncProvider() {
     if (!connection || !activeVaultId) return
     const vaultId = activeVaultId
 
+    let cancelled = false
+    let joining = false
+    let retryStep = 0
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+
+    const clearRetryTimer = () => {
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer)
+        retryTimer = null
+      }
+    }
+
     // Arrow functions (not `function` declarations) so TS's control-flow
     // narrowing of `connection` to non-null carries into these closures —
     // a hoisted function declaration can't be proven to run only after
@@ -78,29 +90,69 @@ export function SyncProvider() {
       await autosaveManager.flushQueue()
     }
 
-    const joinAndCatchUp = () => {
-      // Best-effort: a failed join/catch-up (server unreachable, hub not
-      // deployed yet, …) shouldn't crash the workspace — the connection
-      // will retry on its own reconnect schedule, or the next vault
-      // switch tries again.
-      connection.joinVault(vaultId).then(catchUp).catch(() => {})
+    // Explicitly starts the connection (if it isn't already) and joins
+    // this vault's group — without this, nothing ever calls `.start()`
+    // and the whole live-sync path (JoinVault, /changes catch-up,
+    // revision events) never turns on. `connection.joinVault` itself
+    // calls `ensureStarted()`, so this covers both "never started" and
+    // "started, just joining a different/same vault".
+    //
+    // Guarded re-entrancy: this is also registered as the `onConnected`
+    // listener below, and a *successful* first start calls that
+    // listener synchronously as part of resolving this same call's own
+    // `joinVault` promise — without the `joining` guard that would fire
+    // `JoinVault` (and catch-up) twice for the very first connect.
+    const attemptJoin = () => {
+      if (joining) return
+      joining = true
+      clearRetryTimer()
+      connection
+        .joinVault(vaultId)
+        .then(() => {
+          retryStep = 0
+          if (cancelled) return
+          return catchUp()
+        })
+        .catch(() => {
+          // Best-effort: a failed join/catch-up (server unreachable, hub
+          // not deployed yet, …) shouldn't crash the workspace. Retry
+          // with the same backoff schedule the transport's own
+          // reconnect uses — `withAutomaticReconnect` only retries a
+          // connection that dropped *after* connecting once, never a
+          // first `.start()` that failed, so without this an
+          // unreachable server at first load would never be retried.
+          if (cancelled) return
+          const delay = RECONNECT_DELAYS_MS[Math.min(retryStep, RECONNECT_DELAYS_MS.length - 1)]
+          retryStep += 1
+          retryTimer = setTimeout(attemptJoin, delay)
+        })
+        .finally(() => {
+          joining = false
+        })
     }
 
     const handleRevision = (event: RevisionEvent) => {
       if (event.vaultId !== vaultId) return
-      applyRevisedNotes([event.noteId])
+      // Always advance the cursor — even our own echo is a real revision
+      // that's now been observed.
       useLastSeq.getState().setLastSeq(vaultId, event.seq)
+      queryClient.invalidateQueries({ queryKey: treeQueryKey(vaultId) })
+      if (event.deviceId === deviceId) return // our own autosave echoing back — the editor already has this content; invalidating it would tear down CM6 (losing cursor/undo history) on every single save
+      const tab = tabsForVault(vaultId).tabs.find((t) => t.noteId === event.noteId)
+      if (tab?.dirty) return // open + dirty: leave alone, next save takes the conflict path
+      queryClient.invalidateQueries({ queryKey: noteContentQueryKey(event.noteId) })
     }
 
     const offRevision = connection.onRevision(handleRevision)
-    // `onConnected` fires for every (re)connect from here on; if the
-    // connection is already up (e.g. it was opened for a previous
-    // active vault and never dropped), it won't fire again on its own,
-    // so also join immediately in that case.
-    const offConnected = connection.onConnected(joinAndCatchUp)
-    if (connection.state === 'connected') joinAndCatchUp()
+    // Fires on every reconnect from here on (a drop *after* a successful
+    // join) — re-join + catch-up so a note that changed while we were
+    // disconnected is caught up before revision events resume.
+    const offConnected = connection.onConnected(attemptJoin)
+    attemptJoin()
 
     return () => {
+      cancelled = true
+      clearRetryTimer()
       offRevision()
       offConnected()
       connection.leaveVault(vaultId).catch(() => {})

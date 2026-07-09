@@ -43,8 +43,13 @@ export interface SyncConnection {
   stop: () => Promise<void>
 }
 
-/** Reconnect backoff schedule (ms); `null` after the list is exhausted stops retrying automatically. */
-const RECONNECT_DELAYS_MS = [0, 1000, 2000, 5000, 10_000, 15_000, 30_000]
+/**
+ * Reconnect backoff schedule (ms), also reused by `SyncProvider` for its
+ * own retry of the *initial* `joinVault` (the transport's own
+ * `withAutomaticReconnect` only retries a connection that dropped after
+ * connecting once — it never retries a first `.start()` that failed).
+ */
+export const RECONNECT_DELAYS_MS = [0, 1000, 2000, 5000, 10_000, 15_000, 30_000]
 
 export function createSyncConnection(baseUrl: string, getAccessToken: () => string | null): SyncConnection {
   const connection: HubConnection = new HubConnectionBuilder()
