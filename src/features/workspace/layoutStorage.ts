@@ -3,7 +3,7 @@ export type WorkspaceLayout = Record<string, number>
 
 const STORAGE_KEY = 'slate.workspace.layout'
 
-export const DEFAULT_WORKSPACE_LAYOUT: WorkspaceLayout = { sidebar: 22, main: 78 }
+export const DEFAULT_WORKSPACE_LAYOUT: WorkspaceLayout = { sidebar: 20, main: 60, right: 20 }
 
 function isWorkspaceLayout(value: unknown): value is WorkspaceLayout {
   if (!value || typeof value !== 'object') return false

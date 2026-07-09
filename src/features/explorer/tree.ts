@@ -131,6 +131,14 @@ export function isSameOrAncestor(maybeAncestor: string, path: string): boolean {
   return a === p || p.startsWith(`${a}/`)
 }
 
+/** The first of `base`, `base 1`, `base 2`, … not already in `existing` — used for "New note"/"New folder" default names. */
+export function nextAvailableName(existing: Set<string>, base: string): string {
+  if (!existing.has(base)) return base
+  let i = 1
+  while (existing.has(`${base} ${i}`)) i++
+  return `${base} ${i}`
+}
+
 /** Vault-relative destination path for moving `sourcePath` into `destinationFolder` (`""` = vault root). */
 export function computeMoveDestination(sourcePath: string, destinationFolder: string): string {
   const base = baseOf(normalizeFolderPath(sourcePath) || sourcePath)

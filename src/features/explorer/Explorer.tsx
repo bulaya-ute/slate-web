@@ -6,12 +6,20 @@ import { Tooltip } from '../../components/ui/Tooltip'
 import type { NoteMeta } from '../../lib/api/types'
 import { useActiveVault } from '../../stores/activeVault'
 import { useTabs } from '../tabs/tabs.store'
-import { VaultSwitcher } from '../vaults/VaultSwitcher'
 import type { DragPayload } from './dnd'
 import { useExplorerStore } from './explorer.store'
 import type { ExplorerActions } from './TreeNode'
 import { TreeView } from './TreeView'
-import { buildTree, baseOf, parentOf, stripMdExtension, type TreeNode, isSameOrAncestor, computeMoveDestination } from './tree'
+import {
+  buildTree,
+  baseOf,
+  nextAvailableName,
+  parentOf,
+  stripMdExtension,
+  type TreeNode,
+  isSameOrAncestor,
+  computeMoveDestination,
+} from './tree'
 import {
   useCreateFolder,
   useCreateNote,
@@ -21,13 +29,6 @@ import {
   useRenameNote,
   useTreeQuery,
 } from './useTree'
-
-function nextAvailableName(existing: Set<string>, base: string): string {
-  if (!existing.has(base)) return base
-  let i = 1
-  while (existing.has(`${base} ${i}`)) i++
-  return `${base} ${i}`
-}
 
 function PlusIcon() {
   return (
@@ -54,7 +55,12 @@ interface PendingDelete {
   node: TreeNode
 }
 
-/** Sidebar contents: vault switcher, root-level toolbar, and the file explorer tree. */
+/**
+ * File explorer tree: root-level toolbar plus the tree view. The vault
+ * switcher used to live at the top of this component; it's now hoisted
+ * to `LeftSidebar` (pinned above all three sidebar sub-views — files,
+ * search, tags — rather than only above this one).
+ */
 export function Explorer() {
   const activeVaultId = useActiveVault((s) => s.activeVaultId)
   const vaultId = activeVaultId ?? ''
@@ -74,13 +80,7 @@ export function Explorer() {
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
 
-  if (!activeVaultId) {
-    return (
-      <div className="flex h-full flex-col">
-        <VaultSwitcher />
-      </div>
-    )
-  }
+  if (!activeVaultId) return null
 
   function siblingNames(kind: 'folder' | 'note', folder: string): Set<string> {
     if (!data) return new Set()
@@ -170,9 +170,7 @@ export function Explorer() {
 
   return (
     <div className="flex h-full flex-col">
-      <VaultSwitcher />
-
-      <div className="flex items-center justify-between border-t border-border px-3 py-1.5">
+      <div className="flex items-center justify-between px-3 py-1.5">
         <span className="text-[11px] font-medium uppercase tracking-wide text-text-faint">Files</span>
         <div className="flex gap-0.5">
           <Tooltip content="New note">

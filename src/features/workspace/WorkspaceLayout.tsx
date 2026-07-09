@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import type { PanelImperativeHandle } from 'react-resizable-panels'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { Explorer } from '../explorer/Explorer'
+import { LeftSidebar } from './LeftSidebar'
 import { loadWorkspaceLayout, saveWorkspaceLayout } from './layoutStorage'
+import { RightSidebar } from './RightSidebar'
 import { WorkspaceMain } from './WorkspaceMain'
 
 export interface WorkspaceLayoutProps {
@@ -10,11 +11,15 @@ export interface WorkspaceLayoutProps {
   sidebarPanelRef: React.Ref<PanelImperativeHandle | null>
 }
 
+const SEPARATOR_CLASS =
+  'w-px shrink-0 cursor-col-resize bg-border transition-colors duration-150 ease-out hover:bg-accent'
+
 /**
- * The resizable + collapsible two-pane workspace shell: a sidebar (vault
- * switcher + file explorer) and the main pane (tabs + note view). Sizes
- * and collapse state persist together via `defaultLayout` /
- * `onLayoutChanged` — a collapsed sidebar just means its persisted size
+ * The resizable + collapsible three-pane workspace shell: a left
+ * sidebar (vault switcher + explorer/search/tags), the main pane (tabs
+ * + note view), and a right sidebar (outline + backlinks). Sizes and
+ * collapse state persist together via `defaultLayout` /
+ * `onLayoutChanged` — a collapsed panel just means its persisted size
  * is 0, so it stays collapsed across reloads with no separate flag.
  */
 export function WorkspaceLayout({ sidebarPanelRef }: WorkspaceLayoutProps) {
@@ -37,11 +42,23 @@ export function WorkspaceLayout({ sidebarPanelRef }: WorkspaceLayoutProps) {
         defaultSize={initialLayout.sidebar}
         className="bg-bg-inset"
       >
-        <Explorer />
+        <LeftSidebar />
       </Panel>
-      <Separator className="w-px shrink-0 cursor-col-resize bg-border transition-colors duration-150 ease-out hover:bg-accent" />
-      <Panel id="main" minSize={40} defaultSize={initialLayout.main}>
+      <Separator className={SEPARATOR_CLASS} />
+      <Panel id="main" minSize={30} defaultSize={initialLayout.main}>
         <WorkspaceMain />
+      </Panel>
+      <Separator className={SEPARATOR_CLASS} />
+      <Panel
+        id="right"
+        collapsible
+        collapsedSize={0}
+        minSize={15}
+        maxSize={40}
+        defaultSize={initialLayout.right ?? 20}
+        className="bg-bg-inset"
+      >
+        <RightSidebar />
       </Panel>
     </Group>
   )
