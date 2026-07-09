@@ -8,6 +8,7 @@ import { useNoteContentQuery } from '../notes/useNoteContent'
 import { autosaveManager } from '../sync/syncManager'
 import { useAutosaveStatus } from '../sync/useAutosaveStatus'
 import { useTabs } from '../tabs/tabs.store'
+import { useActiveEditor } from './activeEditorController'
 import { editorContext, type EditorContextValue } from './editorContext'
 import { MarkdownPreview } from './markdownPreview/MarkdownPreview'
 import { SaveStatusIndicator } from './SaveStatusIndicator'
@@ -82,9 +83,28 @@ export function EditorHost({ noteId, path, title }: EditorHostProps) {
     viewRef.current = view
     view.focus()
 
+    // Registers this note as "the" active editor so the outline panel
+    // (scroll-to-heading) and command palette (toggle preview) can reach
+    // it through a narrow interface instead of CM6 internals — see
+    // `activeEditorController`'s doc comment.
+    useActiveEditor.getState().setActiveEditor({
+      noteId,
+      scrollToLine: (line) => {
+        const clamped = Math.min(Math.max(line, 1), view.state.doc.lines)
+        const linePos = view.state.doc.line(clamped)
+        view.dispatch({
+          selection: { anchor: linePos.from },
+          effects: EditorView.scrollIntoView(linePos.from, { y: 'center' }),
+        })
+        view.focus()
+      },
+      togglePreview: () => setShowPreview((v) => !v),
+    })
+
     return () => {
       view.destroy()
       viewRef.current = null
+      useActiveEditor.getState().clearActiveEditor(noteId)
       // Flushes (rather than drops) any edit still sitting in the 800ms
       // debounce window when the tab switches/closes — see
       // `AutosaveManager.flushAndClose`'s doc comment for why this used
