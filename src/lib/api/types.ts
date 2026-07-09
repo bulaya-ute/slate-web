@@ -191,6 +191,20 @@ export interface TagCount {
   count: number
 }
 
+/**
+ * `GET /vaults/{v}/tags/{tag}/notes` response entry. Not spelled out in
+ * the binding shared contract (only `/tags` itself is) — shaped to
+ * match the other note-listing endpoints (`SearchResult`, `Backlink`)
+ * that already use `noteId`/`path`/`title`. Widen rather than replace
+ * if the server's actual shape differs once W2's search/tags endpoints
+ * land.
+ */
+export interface TagNoteEntry {
+  noteId: string
+  path: string
+  title: string
+}
+
 export interface Backlink {
   noteId: string
   path: string

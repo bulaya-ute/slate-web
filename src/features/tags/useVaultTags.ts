@@ -14,3 +14,17 @@ export function useVaultTags(vaultId: string | null) {
     staleTime: 30_000,
   })
 }
+
+export function tagNotesQueryKey(vaultId: string, tag: string) {
+  return ['tag-notes', vaultId, tag] as const
+}
+
+/** `GET /vaults/{v}/tags/{tag}/notes` — notes for one tag, fetched on-demand as the tags pane drills in. */
+export function useTagNotes(vaultId: string | null, tag: string | null) {
+  return useQuery({
+    queryKey: tagNotesQueryKey(vaultId ?? 'none', tag ?? 'none'),
+    queryFn: () => tagsApi.fetchNotesForTag(vaultId as string, tag as string),
+    enabled: Boolean(vaultId) && Boolean(tag),
+    staleTime: 15_000,
+  })
+}
