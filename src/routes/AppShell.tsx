@@ -1,8 +1,11 @@
+import { useEffect } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { Button } from '../components/ui/Button'
 import { Tooltip } from '../components/ui/Tooltip'
+import { CommandPalette } from '../features/palette/CommandPalette'
 import { SyncProvider } from '../features/sync/SyncProvider'
+import { useSidebarControl } from '../features/workspace/sidebarControl'
 import { WorkspaceLayout } from '../features/workspace/WorkspaceLayout'
 import { useAuth } from '../stores/auth'
 import { useServer } from '../stores/servers'
@@ -34,9 +37,22 @@ export function AppShell() {
     else panel.collapse()
   }
 
+  // Lets the command palette's "Open vault switcher" command reach this
+  // panel's imperative ref without prop-drilling it — see
+  // `sidebarControl`'s doc comment.
+  useEffect(() => {
+    useSidebarControl.getState().setExpandSidebar(() => {
+      const panel = sidebarPanelRef.current
+      if (panel?.isCollapsed()) panel.expand()
+    })
+    return () => useSidebarControl.getState().setExpandSidebar(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <div className="flex h-full flex-col bg-bg">
       <SyncProvider />
+      <CommandPalette />
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
         <div className="flex items-center gap-1">
           <Tooltip content="Toggle sidebar">
