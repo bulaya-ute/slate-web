@@ -37,6 +37,7 @@ override sets `data-theme="light"|"dark"` on `<html>` (see
 | `Button` | `variant`: primary / secondary / ghost / danger. `size`: sm / md. `loading` shows an inline spinner and disables the button. |
 | `Input` | Labeled text field with `error` (red, sets `aria-invalid`) and `hint` slots. Forward-refs the `<input>`. |
 | `Modal` | Centered dialog, portaled to `document.body`. Closes on Escape/backdrop click, restores focus to the trigger on close. |
+| `useFocusTrap` | Hook backing `Modal`'s (and `CommandPalette`'s) focus handling: captures the pre-open trigger, keeps Tab/Shift+Tab cycling within a container while open, and restores focus to the trigger on close. Reuse this for any new portaled `aria-modal="true"` overlay rather than hand-rolling capture/restore/trap. |
 | `Toast` / `toast.*` / `ToastViewport` | Call `toast.info/success/danger(title, description?)` from anywhere (no provider/context needed) — backed by a small Zustand store. Mount `<ToastViewport />` once near the app root. Auto-dismisses after 5s. |
 | `Skeleton` | Pulsing placeholder block; pass `className` for size (`"h-4 w-32"`, etc). Compose several for list/card skeletons. |
 | `Spinner` | Indeterminate spinner, `size`: sm / md / lg. Always pass a meaningful `label` for screen readers. |

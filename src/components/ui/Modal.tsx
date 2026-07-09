@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useFocusTrap } from './useFocusTrap'
 
 export interface ModalProps {
   open: boolean
@@ -15,21 +16,18 @@ export interface ModalProps {
  */
 export function Modal({ open, onClose, title, children, footer }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<Element | null>(null)
+
+  useFocusTrap(dialogRef, open)
 
   useEffect(() => {
     if (!open) return
-    triggerRef.current = document.activeElement
     dialogRef.current?.focus()
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      if (triggerRef.current instanceof HTMLElement) triggerRef.current.focus()
-    }
+    return () => document.removeEventListener('keydown', onKeyDown)
   }, [open, onClose])
 
   if (!open) return null

@@ -1,5 +1,6 @@
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useFocusTrap } from '../../components/ui/useFocusTrap'
 import { useActiveVault } from '../../stores/activeVault'
 import { useCreateNote, useTreeQuery } from '../explorer/useTree'
 import { useTabs } from '../tabs/tabs.store'
@@ -34,8 +35,15 @@ export function CommandPalette() {
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   const isOpen = mode !== 'closed'
+
+  // Capture the pre-open trigger element, keep Tab/Shift+Tab cycling
+  // within the palette while open, and restore focus to the trigger on
+  // close — including the "selected a result" close path, since that
+  // also flips `isOpen` to false via `close()`.
+  useFocusTrap(dialogRef, isOpen)
 
   // Global open shortcuts. Neither Ctrl/Cmd+P nor Ctrl/Cmd+Shift+P is
   // bound by the CM6 editor's own keymap (checked against
@@ -136,6 +144,7 @@ export function CommandPalette() {
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={mode === 'switcher' ? 'Quick switcher' : 'Command palette'}

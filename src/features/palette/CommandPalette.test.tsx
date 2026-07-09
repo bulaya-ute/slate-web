@@ -170,3 +170,90 @@ describe('CommandPalette — command list (Ctrl/Cmd+Shift+P)', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
+
+describe('CommandPalette — focus trap & restore', () => {
+  it('wraps Tab from the last row to the input, and Shift+Tab from the input to the last row', async () => {
+    const tree: VaultTree = {
+      folders: [],
+      notes: [note(), note({ id: 'note-2', path: 'Project Roadmap.md', title: 'Project Roadmap' })],
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.endsWith(`/api/vaults/${VAULT}/tree`)) return Promise.resolve(jsonResponse(tree))
+        throw new Error(`Unexpected fetch: ${url}`)
+      }),
+    )
+
+    renderPalette()
+    fireEvent.keyDown(document, { key: 'p', ctrlKey: true })
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(2))
+
+    const input = screen.getByRole('textbox', { name: 'Jump to note' })
+    const options = screen.getAllByRole('option')
+    const lastOption = options[options.length - 1]
+
+    lastOption.focus()
+    expect(document.activeElement).toBe(lastOption)
+
+    fireEvent.keyDown(lastOption, { key: 'Tab' })
+    expect(document.activeElement).toBe(input)
+
+    fireEvent.keyDown(input, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(lastOption)
+  })
+
+  it('restores focus to the pre-open trigger element after closing via Escape', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.endsWith(`/api/vaults/${VAULT}/tree`)) return Promise.resolve(jsonResponse({ folders: [], notes: [] }))
+        throw new Error(`Unexpected fetch: ${url}`)
+      }),
+    )
+
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open palette'
+    document.body.appendChild(trigger)
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+
+    renderPalette()
+    fireEvent.keyDown(document, { key: 'p', ctrlKey: true })
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(trigger)
+
+    trigger.remove()
+  })
+
+  it('restores focus to the pre-open trigger element after closing by selecting a result', async () => {
+    const tree: VaultTree = { folders: [], notes: [note()] }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.endsWith(`/api/vaults/${VAULT}/tree`)) return Promise.resolve(jsonResponse(tree))
+        throw new Error(`Unexpected fetch: ${url}`)
+      }),
+    )
+
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open palette'
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    renderPalette()
+    fireEvent.keyDown(document, { key: 'p', ctrlKey: true })
+    await waitFor(() => expect(screen.getByRole('option', { name: /Daily Notes/ })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('option', { name: /Daily Notes/ }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(trigger)
+
+    trigger.remove()
+  })
+})
