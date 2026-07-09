@@ -21,6 +21,21 @@ const SEPARATOR_CLASS =
  * collapse state persist together via `defaultLayout` /
  * `onLayoutChanged` — a collapsed panel just means its persisted size
  * is 0, so it stays collapsed across reloads with no separate flag.
+ *
+ * `minSize`/`maxSize`/`defaultSize` are passed as `"NN%"` strings, not
+ * bare numbers — found and fixed during Task W5's verification pass.
+ * react-resizable-panels v4 treats a bare number as *pixels*, not
+ * percent (only unitless strings/`"NN%"` are percentages); every value
+ * here and in `layoutStorage.ts`'s `WorkspaceLayout` (a percentage-of-
+ * group map, per that file's own doc comment) was written assuming the
+ * old percentage-by-default convention. With bare numbers the sidebar
+ * and right panels were silently clamped to a 40px `maxSize`
+ * (~2-3% of a typical viewport) — collapsed-looking and too narrow for
+ * any label text to render, even though the panels themselves reported
+ * as "not collapsed". Pre-existing bug, unrelated to this task's own
+ * feature work; fixed here because it made the sidebar unusable enough
+ * to block manually verifying anything that lives in it (explorer,
+ * search, tags — including this task's conflict badge → resolve flow).
  */
 export function WorkspaceLayout({ sidebarPanelRef }: WorkspaceLayoutProps) {
   const [initialLayout] = useState(() => loadWorkspaceLayout())
@@ -37,15 +52,15 @@ export function WorkspaceLayout({ sidebarPanelRef }: WorkspaceLayoutProps) {
         panelRef={sidebarPanelRef}
         collapsible
         collapsedSize={0}
-        minSize={15}
-        maxSize={40}
-        defaultSize={initialLayout.sidebar}
+        minSize="15%"
+        maxSize="40%"
+        defaultSize={`${initialLayout.sidebar}%`}
         className="bg-bg-inset"
       >
         <LeftSidebar />
       </Panel>
       <Separator className={SEPARATOR_CLASS} />
-      <Panel id="main" minSize={30} defaultSize={initialLayout.main}>
+      <Panel id="main" minSize="30%" defaultSize={`${initialLayout.main}%`}>
         <WorkspaceMain />
       </Panel>
       <Separator className={SEPARATOR_CLASS} />
@@ -53,9 +68,9 @@ export function WorkspaceLayout({ sidebarPanelRef }: WorkspaceLayoutProps) {
         id="right"
         collapsible
         collapsedSize={0}
-        minSize={15}
-        maxSize={40}
-        defaultSize={initialLayout.right ?? 20}
+        minSize="15%"
+        maxSize="40%"
+        defaultSize={`${initialLayout.right ?? 20}%`}
         className="bg-bg-inset"
       >
         <RightSidebar />
