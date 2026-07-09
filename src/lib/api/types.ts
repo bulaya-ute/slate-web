@@ -256,21 +256,70 @@ export interface PatchUserRequest {
   newPassword?: string
 }
 
+/**
+ * `GET /invites` list entry. The contract only spells out the `POST`
+ * response shape (`{token, expiresAt, role}`); a list necessarily also
+ * needs a stable identifier to revoke by. Since `token` is the only
+ * field the contract guarantees is unique, `deleteInvite` (adminApi.ts)
+ * addresses `DELETE /invites/{token}` by token — a documented judgment
+ * call, not a contract fact. Widen (don't rename) if the server's real
+ * list shape differs once S6 lands.
+ */
 export interface Invite {
   token: string
   expiresAt: string
   role: UserRole
+  createdAt?: string
+  createdBy?: string
+  usedAt?: string | null
+  usedBy?: string | null
 }
 
 export interface CreateInviteRequest {
   role: UserRole
 }
 
+/**
+ * `GET /system/health` (admin-only). Field names are a reasonable guess
+ * at "disk, DB size, active sync connections, uptime, version" per the
+ * design spec — S6 hasn't started, so this is built against the
+ * *shape implied by the spec*, not a confirmed contract. The index
+ * signature keeps unknown/renamed fields from being a compile error;
+ * the UI treats every field as optional and shows a dash when absent.
+ */
 export interface SystemHealth {
+  status?: 'ok' | 'degraded' | 'down' | string
+  diskFreeBytes?: number
+  diskTotalBytes?: number
+  databaseSizeBytes?: number
+  activeConnections?: number
+  uptimeSeconds?: number
+  version?: string
   [key: string]: unknown
 }
 
+export interface UserStorageStat {
+  userId: string
+  displayName: string
+  sizeBytes: number
+  noteCount?: number
+}
+
+export interface VaultStorageStat {
+  vaultId: string
+  name: string
+  sizeBytes: number
+  noteCount?: number
+}
+
+/**
+ * `GET /admin/stats` — per-user and per-vault storage usage. Same
+ * caveat as `SystemHealth`: shaped from the design spec ("storage usage
+ * per user/vault"), not a confirmed S6 contract yet.
+ */
 export interface AdminStats {
+  users: UserStorageStat[]
+  vaults: VaultStorageStat[]
   [key: string]: unknown
 }
 

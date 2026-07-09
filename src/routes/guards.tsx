@@ -52,3 +52,10 @@ export function RequireAuth() {
   }
   return <Outlet />
 }
+
+/** "Not an admin → back to the workspace." Sits inside `RequireAuth`, so `user` is always set here. */
+export function RequireAdmin() {
+  const role = useAuth((s) => s.user?.role)
+  if (role !== 'Admin') return <Navigate to="/" replace />
+  return <Outlet />
+}
