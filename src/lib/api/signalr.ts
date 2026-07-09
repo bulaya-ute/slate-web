@@ -28,6 +28,7 @@ export interface RevisionEvent {
   oldPath?: string
   contentHash: string
   deviceId: string
+  isConflict: boolean
 }
 
 export type SyncConnectionState = 'disconnected' | 'connecting' | 'connected'

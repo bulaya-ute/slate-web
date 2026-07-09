@@ -5,6 +5,7 @@ import { normalizeServerUrl } from '../../lib/url'
 import { useActiveVault } from '../../stores/activeVault'
 import { useAuth } from '../../stores/auth'
 import { useServer } from '../../stores/servers'
+import { vaultConflictsQueryKey } from '../conflicts/useConflicts'
 import { treeQueryKey } from '../explorer/useTree'
 import { noteContentQueryKey } from '../notes/useNoteContent'
 import { tabsForVault } from '../tabs/tabs.store'
@@ -137,6 +138,16 @@ export function SyncProvider() {
       // that's now been observed.
       useLastSeq.getState().setLastSeq(vaultId, event.seq)
       queryClient.invalidateQueries({ queryKey: treeQueryKey(vaultId) })
+      if (event.isConflict) {
+        // A conflict revision has to reach the vault-wide conflicts list
+        // (and any open ConflictResolveView) live — regardless of which
+        // device wrote it or whether the note's tab is open/dirty.
+        // Otherwise a second conflict landing on a note the user is
+        // already mid-resolve on is invisible until the query's 10s
+        // staleTime happens to lapse, and can get silently dropped from
+        // resolvedRevIds.
+        queryClient.invalidateQueries({ queryKey: vaultConflictsQueryKey(vaultId) })
+      }
       if (event.deviceId === deviceId) return // our own autosave echoing back — the editor already has this content; invalidating it would tear down CM6 (losing cursor/undo history) on every single save
       const tab = tabsForVault(vaultId).tabs.find((t) => t.noteId === event.noteId)
       if (tab?.dirty) return // open + dirty: leave alone, next save takes the conflict path

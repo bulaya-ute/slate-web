@@ -6,6 +6,7 @@ import type { ChangesResponse } from '../../lib/api/types'
 import { useActiveVault } from '../../stores/activeVault'
 import { useAuth } from '../../stores/auth'
 import { useServer } from '../../stores/servers'
+import { vaultConflictsQueryKey } from '../conflicts/useConflicts'
 import { noteContentQueryKey } from '../notes/useNoteContent'
 import { tabsForVault, useTabs } from '../tabs/tabs.store'
 import type { RevisionEvent, SyncConnection } from '../../lib/api/signalr'
@@ -44,6 +45,7 @@ function revision(overrides: Partial<RevisionEvent> = {}): RevisionEvent {
     path: 'note-1.md',
     contentHash: 'hash-1',
     deviceId: 'device-other',
+    isConflict: false,
     ...overrides,
   }
 }
@@ -234,5 +236,66 @@ describe('handleRevision own-device echo filter (Finding 3)', () => {
 
     expect(invalidateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: noteContentQueryKey('note-1') }))
     expect(tabsForVault(VAULT_A).tabs[0].dirty).toBe(true)
+  })
+})
+
+describe('handleRevision conflicts invalidation (Finding: conflict banner staleness)', () => {
+  function setup() {
+    const fake = makeFakeConnection()
+    vi.mocked(createSyncConnection).mockReturnValue(fake.connection)
+    useActiveVault.setState({ activeVaultId: VAULT_A })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return { fake, queryClient }
+  }
+
+  it('invalidates the vault conflicts query when a revision event carries isConflict: true', async () => {
+    const { fake, queryClient } = setup()
+    await act(async () => {
+      renderSync(queryClient)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    act(() => {
+      fake.emitRevision(revision({ seq: 10, noteId: 'note-1', deviceId: 'device-other', isConflict: true }))
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: vaultConflictsQueryKey(VAULT_A) }))
+  })
+
+  it('does not invalidate the vault conflicts query for a normal, non-conflict revision', async () => {
+    const { fake, queryClient } = setup()
+    await act(async () => {
+      renderSync(queryClient)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    act(() => {
+      fake.emitRevision(revision({ seq: 11, noteId: 'note-1', deviceId: 'device-other', isConflict: false }))
+    })
+
+    expect(invalidateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: vaultConflictsQueryKey(VAULT_A) }))
+  })
+
+  it('invalidates conflicts even for the device\'s own echo and an open-dirty tab, unlike note-content', async () => {
+    const { fake, queryClient } = setup()
+    useTabs.getState().openTab(VAULT_A, { noteId: 'note-1', path: 'note-1.md', title: 'Note 1' })
+    useTabs.getState().setDirty(VAULT_A, 'note-1', true)
+    await act(async () => {
+      renderSync(queryClient)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    act(() => {
+      fake.emitRevision(revision({ seq: 12, noteId: 'note-1', deviceId, isConflict: true }))
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: vaultConflictsQueryKey(VAULT_A) }))
+    expect(invalidateSpy).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: noteContentQueryKey('note-1') }))
   })
 })
